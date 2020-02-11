@@ -10,7 +10,6 @@ import requests
 
 import shapely.wkt
 from shapely.geometry.polygon import Polygon
-import shutil
 
 DLOAD_OPTS = namedtuple("dload_opts", ["landcover_keep", "cloud_throw",
                         "max_lat", "min_lat"])
@@ -39,7 +38,11 @@ def get_s3_fnames(bands):
     return files_to_get
 
 def download(fname, auth, pid, dest_dir, sel_bands,
-             chunks = 1048576):
+             chunks=1048576):
+    """Downloads a file from the copernicus thingy.
+    Can download two at a time, so can probably
+    multithread this"""
+    dest_dir = Path(dest_dir)
     for subfilename in get_s3_fnames(sel_bands):
         # format url
         baseurl = (f"https://scihub.copernicus.eu/dhus/odata"+
@@ -49,9 +52,13 @@ def download(fname, auth, pid, dest_dir, sel_bands,
         if not r.ok:
             raise IOError("Can't start download... [%s]" % source)
         file_size = int(r.headers['content-length'])
-        print("Downloading to -> %s" % subfilename)
+        print("Downloading to -> %s" % (dest_dir/subfilename))
         print("%d bytes..." % file_size)
-        with open(subfilename.replace(".nc", ".partial"), 'wb') as fp:
+        partial_fname = subfilename.replace(".nc", ".partial")
+        save_file = (dest_dir / partial_fname)
+        target_fname = (dest_dir/subfilename)
+
+        with save_file.open(mode='wb') as fp: 
             cntr = 0
             dload = 0
             for chunk in r.iter_content(chunk_size=chunks):
@@ -67,8 +74,7 @@ def download(fname, auth, pid, dest_dir, sel_bands,
                     fp.write(chunk)
                     fp.flush()
                     os.fsync(fp)
-        shutil.move(subfilename.replace("nc", ".partial"), subfilename)
-
+        save_file.replace(target_fname)
 
 class S3SynergyDowload(object):
     """Sentinel 3 Synergy downloader using SentinelSat
@@ -76,7 +82,8 @@ class S3SynergyDowload(object):
     def __init__(self, username, password, dest_dir,
                  sel_bands = [3,6,8,18], 
                  dload_options=None):
-
+        # Can probably do away with sentinelsat dependency
+        
         self.api = SentinelAPI(username, password)
         self.auth = (username, password)
         if dload_options is None:
@@ -128,7 +135,7 @@ class S3SynergyDowload(object):
         for k, granule in granules.items():
             fname = granule['Filename']
             pid = granule["id"]
-            fdir = create_outputs(doy, year, fname)
+            fdir = create_outputs(self.dest_dir, doy, year, fname)
             download(fname, self.auth, pid, fdir, self.sel_bands)
 
 
