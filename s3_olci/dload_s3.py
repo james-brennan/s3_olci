@@ -37,7 +37,7 @@ def get_s3_fnames(bands):
     files_to_get.extend(bandnames)
     return files_to_get
 
-def download(fname, auth, pid, dest_dir, sel_bands,
+def download(fname, meta, auth, pid, dest_dir, sel_bands,
              chunks=1048576):
     """Downloads a file from the copernicus thingy.
     Can download two at a time, so can probably
@@ -50,7 +50,7 @@ def download(fname, auth, pid, dest_dir, sel_bands,
         r = requests.get(baseurl, auth=auth, stream=True,
                          verify=False)
         if not r.ok:
-            raise IOError("Can't start download... [%s]" % source)
+            raise IOError("Can't start download... [%s]" % baseurl)
         file_size = int(r.headers['content-length'])
         print("Downloading to -> %s" % (dest_dir/subfilename))
         print("%d bytes..." % file_size)
@@ -75,6 +75,8 @@ def download(fname, auth, pid, dest_dir, sel_bands,
                     fp.flush()
                     os.fsync(fp)
         save_file.replace(target_fname)
+        with (dest_dir / "polygon.wkt").open("w") as fp:
+            fp.write(meta["footprint"])
 
 class S3SynergyDowload(object):
     """Sentinel 3 Synergy downloader using SentinelSat
@@ -136,7 +138,7 @@ class S3SynergyDowload(object):
             fname = granule['Filename']
             pid = granule["id"]
             fdir = create_outputs(self.dest_dir, doy, year, fname)
-            download(fname, self.auth, pid, fdir, self.sel_bands)
+            download(fname, granule, self.auth, pid, fdir, self.sel_bands)
 
 
 if __name__ == "__main__":
