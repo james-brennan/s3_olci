@@ -1,5 +1,6 @@
 from collections import namedtuple
 import datetime as dt
+import logging
 import os
 
 from pathlib import Path
@@ -10,6 +11,8 @@ import requests
 
 import shapely.wkt
 from shapely.geometry.polygon import Polygon
+
+LOG = logging.getLogger(__name__)  
 
 DLOAD_OPTS = namedtuple("dload_opts", ["landcover_keep", "cloud_throw",
                         "max_lat", "min_lat"])
@@ -52,8 +55,8 @@ def download(fname, meta, auth, pid, dest_dir, sel_bands,
         if not r.ok:
             raise IOError("Can't start download... [%s]" % baseurl)
         file_size = int(r.headers['content-length'])
-        print("Downloading to -> %s" % (dest_dir/subfilename))
-        print("%d bytes..." % file_size)
+        LOG.info("Downloading to -> %s" % (dest_dir/subfilename))
+        LOG.info("%d bytes..." % file_size)
         partial_fname = subfilename.replace(".nc", ".partial")
         save_file = (dest_dir / partial_fname)
         target_fname = (dest_dir/subfilename)
@@ -66,7 +69,7 @@ def download(fname, meta, auth, pid, dest_dir, sel_bands,
                     cntr += 1
                     if cntr > 100:
                         dload += cntr * chunks
-                        print("\tWriting %d/%d [%5.2f %%]" %
+                        LOG.info("\tWriting %d/%d [%5.2f %%]" %
                                      (dload, file_size,
                                       100. * float(dload) / float(file_size)))
                         cntr = 0
@@ -96,7 +99,8 @@ class S3SynergyDowload(object):
         else:
             raise IOError
         self.sel_bands = sel_bands
-
+        LOG.info(f"Selected bands: {sel_bands}")
+        LOG.info(f"Destination folder: {self.dest_dir}")
 
     def _query(self, doy, year):
         """Uses sentinelsat to query the Query the science hub, or wherever the
@@ -127,7 +131,7 @@ class S3SynergyDowload(object):
                     keep[p]=meta
             except:
                 pass
-        print(f"Number of suitable granules {len(keep)}")
+        LOG.info(f"Number of suitable granules {len(keep)}")
         return keep
 
 
@@ -135,6 +139,7 @@ class S3SynergyDowload(object):
     def download_data(self, doy, year):
         granules = self._query(doy, year)
         for k, granule in granules.items():
+            LOG.info(f"Downloading granule {granule['Filename']}...")
             fname = granule['Filename']
             pid = granule["id"]
             fdir = create_outputs(self.dest_dir, doy, year, fname)
