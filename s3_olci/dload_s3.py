@@ -59,7 +59,11 @@ def download(fname, meta, auth, pid, dest_dir, sel_bands,
         LOG.info("%d bytes..." % file_size)
         partial_fname = subfilename.replace(".nc", ".partial")
         save_file = (dest_dir / partial_fname)
-        target_fname = (dest_dir/subfilename)
+        target_fname = (dest_dir / subfilename)
+        if target_fname.exists():
+            # File already downloaded
+            LOG.info(f"{target_fname} already downloaded. Skipping...")
+            continue
 
         with save_file.open(mode='wb') as fp: 
             cntr = 0
