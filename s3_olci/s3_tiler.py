@@ -7,6 +7,8 @@ import netCDF4
 
 import shapely.wkt
 
+from skimage.transform import resize
+
 from shapely.geometry import shape, GeometryCollection
 
 
@@ -37,9 +39,11 @@ def convert_geoloc_vrt(data_dir):
         ysize = g.RasterYSize
         vrt = create_vrts(f"{dimension}.tif", xsize, ysize)
         fname.write_text(vrt)
+        return xsize, ysize
 
 
 def convert_nc_geotiff(data_dir, selected_bands):
+    xsize, ysize = convert_geoloc_vrt(data_dir)
     # Create the sensible format output file
     driver = gdal.GetDriverByName("GTiff")
     # Output dataset in WGS84 coordinates
@@ -49,7 +53,7 @@ def convert_nc_geotiff(data_dir, selected_bands):
                             gdal.GDT_Float32)
     n_bands = 4 + len(selected_bands)
     _ = write_sdr_record(output_ds, data_dir, selected_bands)
-    georeference_tif(n_nands, xsize, ysize, fname, data_dir)
+    georeference_tif(n_bands, xsize, ysize, fname, data_dir)
 
 def write_sdr_record(output_ds, data_dir, selected_bands):
     # Pipe the netcdfs into the output
@@ -83,10 +87,10 @@ def write_sdr_record(output_ds, data_dir, selected_bands):
     bnd.WriteArray(angles['OLC_VAA'] - angles['SAA'])
     bnd.SetMetadata({"BandName": "RAA"})
     output_ds = None
-    return band + 3, xsize, ysize
+    return band + 3
         
         
-def georeference_tif(n_bands, xsize, ysize, output_file, data_dir):
+def georeference_tif(n_bands, xsize, ysize, output_file, dest_dir):
     band_str = ""
     for band in range(1, n_bands):
         vrt_raster_band_tmpl = f"""<VRTRasterBand band="{band}" datatype="Float32">
