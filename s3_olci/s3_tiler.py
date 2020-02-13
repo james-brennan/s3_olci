@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 import gdal
+import netCDF4
 
 import shapely.wkt
 
@@ -23,7 +24,8 @@ def create_vrts(fname, xsize, ysize):
       </VRTRasterBand>
     </VRTDataset>"""
 
-    def convert_geoloc_tiff(data_dir):
+    def convert_geoloc_tiff(data_dir, selected_bands):
+        # First create some VRTs to georreference the ungridded data
         nc_file = data_dir / "geolocation.nc"
         for dimension in ["lat", "lon"]:
             fname = data_dir/f"{dimension}.tif"
@@ -35,6 +37,78 @@ def create_vrts(fname, xsize, ysize):
             ysize = g.RasterYSize
             vrt = create_vrts(f"{dimension}.tif", xsize, ysize)
             fname.write_text(vrt)
+
+        # Create the sensible format output file
+        driver = gdal.GetDriverByName("GTiff")
+        # Output dataset in WGS84 coordinates
+        output_ds = driver.Create((data_dir / "S3_data.tif").as_posix(),
+                                xsize, ysize, 4 + len(selected_bands),
+                                gdal.GDT_Float32)
+        # Pipe the netcdfs into the output
+        for band, band_name in enumerate(selected_bands):
+            ds = netCDF4.Dataset(
+                        (data_dir / f"Syn_{band_name}_reflectance.nc").as_posix(),
+            data = ds.variables[f'SDR_{band_name}'][:]
+            bnd = output_ds.GetRasterBand(band + 1)
+            bnd.WriteArray(data.data)
+            bnd.SetMetadata({"BandName": f"Syn_{band_name}"})
+        band += 1
+        qa = ~data.mask
+        bnd = output_ds.GetRasterBand(band+1).WriteArray(qa)
+
+        angs = netCDF4.Dataset(data_dir+"tiepoints_olci.nc", 'r')
+        angles = {'OLC_VZA':None, 'SZA':None, 'OLC_VAA':None, 'SAA':None}
+        for key in angles.keys():
+            an_ = angs[key][:]
+            an_ = an_.reshape((-1, ysize)).T
+            ang=  resize(an_, (ysize, xsize), order=0, preserve_range=True)
+            # check this is the right way around
+            angles[key]=ang
+        band +=1
+        bnd = dataset.GetRasterBand(band + 1)
+        bnd.WriteArray(angles['OLC_VZA'])
+        bnd.SetMetadata({"BandName": "VZA"})
+        bnd = dataset.GetRasterBand(band + 2)
+        bnd.WriteArray(angles['OLC_SZA'])
+        bnd.SetMetadata({"BandName": "SZA"})
+        bnd = dataset.GetRasterBand(band + 3)
+        bnd.WriteArray(angles['OLC_VAA'] - angles['SAA'])
+        bnd.SetMetadata({"BandName": "RAA"})
+
+        output_ds = None
+# # #     # Write the main VRT with this data
+# # #     band_str = ""
+# # #     for band in range(1, 9):
+# # #         vrt_raster_band_tmpl = f"""<VRTRasterBand band="{band}" datatype="Float32">
+# # #         <SimpleSource>
+# # #           <SourceFilename relativeToVRT="1">data.tif</SourceFilename>
+# # #           <SourceBand>{band}</SourceBand>
+# # #           <SourceProperties RasterXSize="{xsize}" RasterYSize="{ysize}" DataType="Float32" BlockXSize="256" BlockYSize="256" />
+# # #           <SrcRect xOff="0" yOff="0" xSize="{xsize}" ySize="{ysize}" />
+# # #           <DstRect xOff="0" yOff="0" xSize="{xsize}" ySize="{ysize}" />
+# # #         </SimpleSource>
+# # #       </VRTRasterBand>
+# # #         """
+# # #         band_str += vrt_raster_band_tmpl
+# # #     # and
+# # #     lon_file = work_dir + "lon.tif"
+# # #     lat_file = work_dir + "lat.tif"
+# # #     vrt_main_tmpl= f"""<VRTDataset rasterXSize="{xsize}" rasterYSize="{ysize}">
+# # #        <metadata domain="GEOLOCATION">
+# # #          <mdi key="X_DATASET">{lon_file}</mdi>
+# # #          <mdi key="X_BAND">1</mdi>
+# # #          <mdi key="Y_DATASET">{lat_file}</mdi>
+# # #          <mdi key="Y_BAND">1</mdi>
+# # #          <mdi key="PIXEL_OFFSET">0</mdi>
+# # #          <mdi key="LINE_OFFSET">0</mdi>
+# # #          <mdi key="PIXEL_STEP">1</mdi>
+# # #          <mdi key="LINE_STEP">1</mdi>
+# # #        </metadata>
+# # #            {band_str}
+# # # </VRTDataset>"""
+# # #     # save it
+# # #     with open(work_dir+"data.vrt", "w") as text_file:
+# # #         text_file.write(vrt_main_tmpl)
 
 
 def read_s3syn_polyfile(s3_granule):
