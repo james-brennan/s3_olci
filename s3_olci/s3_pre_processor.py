@@ -37,7 +37,6 @@ if __name__ =="__main__":
     intersects = [olci_swath.intersects(tile) for tile in MODIS_TILES]
     idx = np.where(intersects)
     which_tiles = tiles[idx]
-    # get amount of intersection
 
     # --------------- Start processing ------------------------------   
     # create tmp working dir within the file dir

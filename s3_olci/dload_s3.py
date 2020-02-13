@@ -6,13 +6,16 @@ import os
 from pathlib import Path
 
 from sentinelsat.sentinel import SentinelAPI
+from sentinelsat import SentinelAPI, read_geojson, geojson_to_wkt
 
 import requests
 
 import shapely.wkt
 from shapely.geometry.polygon import Polygon
 
-LOG = logging.getLogger(__name__)  
+import argparse
+
+LOG = logging.getLogger(__name__)
 
 DLOAD_OPTS = namedtuple("dload_opts", ["landcover_keep", "cloud_throw",
                         "max_lat", "min_lat"])
@@ -61,7 +64,7 @@ def download(fname, meta, auth, pid, dest_dir, sel_bands,
         save_file = (dest_dir / partial_fname)
         target_fname = (dest_dir/subfilename)
 
-        with save_file.open(mode='wb') as fp: 
+        with save_file.open(mode='wb') as fp:
             cntr = 0
             dload = 0
             for chunk in r.iter_content(chunk_size=chunks):
@@ -85,10 +88,10 @@ class S3SynergyDowload(object):
     """Sentinel 3 Synergy downloader using SentinelSat
     """
     def __init__(self, username, password, dest_dir,
-                 sel_bands = [3,6,8,18], 
+                 sel_bands = [3,6,8,18],
                  dload_options=None):
         # Can probably do away with sentinelsat dependency
-        
+
         self.api = SentinelAPI(username, password)
         self.auth = (username, password)
         if dload_options is None:
@@ -102,14 +105,20 @@ class S3SynergyDowload(object):
         LOG.info(f"Selected bands: {sel_bands}")
         LOG.info(f"Destination folder: {self.dest_dir}")
 
-    def _query(self, doy, year):
+    def _query(self, doy, year, polygon=None):
         """Uses sentinelsat to query the Query the science hub, or wherever the
-        data are kept. Fitlers products by landcover, clouds, etc"""
+        data are kept. Filters products by landcover, clouds, etc"""
         date = dt.datetime.strptime(f"{year}{doy}", "%Y%j")
         date0 = date.strftime("%Y%m%d")
         date1 = (date + dt.timedelta(days=1)).strftime("%Y%m%d")
-        products = self.api.query(area=None, date=(date0, date1),
-                         producttype='SY_2_SYN___')
+        import pdb; pdb.set_trace()
+        if polygon != None:
+            footprint = geojson_to_wkt(read_geojson(polygon))
+            products = self.api.query(area=footprint, date=(date0, date1),
+                             producttype='SY_2_SYN___')
+        else:
+            products = self.api.query(area=None, date=(date0, date1),
+                             producttype='SY_2_SYN___')            
         selected_products = {k: product for k, product in products.items()
                             if check_bounds(product['footprint'],
                             self.dload_options.max_lat,
@@ -136,8 +145,8 @@ class S3SynergyDowload(object):
 
 
 
-    def download_data(self, doy, year):
-        granules = self._query(doy, year)
+    def download_data(self, doy, year, polygon):
+        granules = self._query(doy, year, polygon)
         for k, granule in granules.items():
             LOG.info(f"Downloading granule {granule['Filename']}...")
             fname = granule['Filename']
@@ -147,6 +156,29 @@ class S3SynergyDowload(object):
 
 
 if __name__ == "__main__":
-    s3_dload = S3SynergyDowload("jbrennan", "burnedarea",
-            "/home/ucfajlg/temp/S3_BRDF/")
-    s3_dload.download_data(300, 2019)
+
+
+    parser = argparse.ArgumentParser(description='Download S3 Synergy L2 surface reflectance data. https://sentinel.esa.int/web/sentinel/user-guides/sentinel-3-synergy/product-types/level-2-syn')
+    parser.add_argument('year', type=int, default=340,
+                        help='Year to download')  
+    parser.add_argument('doy', type=int, default=2019,
+                        help='Day of Year to download')
+    parser.add_argument('--polygon', default=None,
+                        help='A geojson polygon region to limit file downloads to. Otherwise download all SYN files for the day. ')
+    parser.add_argument('--outputdir', 
+                        help='Output directory for downloaded files.', default='./')
+    parser.add_argument('--user', 
+                        help='Username on scihub.copernicus.eu', default='jbrennan')
+    parser.add_argument('--password', 
+                        help='Password for scihub.copernicus.eu', default='burnedarea')
+
+
+    args = parser.parse_args()
+
+
+    s3_dload = S3SynergyDowload(args.user, args.password, args.outputdir)
+    s3_dload.download_data(args.doy, args.year, args.polygon)
+
+
+
+
