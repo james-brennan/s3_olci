@@ -151,6 +151,14 @@ def get_swaths_overlap_tile(swaths, swath_geoms, tile_geom):
     return sel_swaths
 
 
+class S3SynToMODISTile(object):
+    """A class to cleanly convert S3SYN netCDF files to sensible
+    MODIS tiles in glorious GeoTIFF"""
+    # This is supposed to call functions above
+    def __init__(self):
+
+
+
 if __name__ == "__main__":
     h = 18
     v = 2
